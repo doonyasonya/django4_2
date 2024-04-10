@@ -1,64 +1,74 @@
-from django.shortcuts import get_object_or_404, render
-from django.utils import timezone
+from django.contrib.auth.mixins import LoginRequiredMixin
+from django.views.generic import (
+    CreateView,
+    DeleteView,
+    DetailView,
+    ListView,
+    UpdateView,
+)
+from django.shortcuts import get_object_or_404
+from django.urls import reverse, reverse_lazy
 
-from blog.models import Category, Post
-from core.constants import MAX_POSTS_ON_SCREEN
-
-
-def index(request):
-    post_list = (
-        Post.objects.select_related(
-            'author',
-            'location',
-            'category'
-        )
-        .filter(
-            pub_date__lte=timezone.now(),
-            is_published=True,
-            category__is_published=True
-        )[:MAX_POSTS_ON_SCREEN]
-    )
-    return render(request, 'blog/index.html', {'post_list': post_list})
+from blog.models import Category, Comment, Post
 
 
-def post_detail(request, post_id):
-    post = get_object_or_404(
-        Post.objects.select_related(
-            'author',
-            'location',
-            'category'
-        ),
-        pk=post_id,
-        pub_date__lte=timezone.now(),
-        is_published=True,
-        category__is_published=True
-    )
-    return render(request, 'blog/detail.html', {'post': post})
+class IndexListView(ListView):
+    model = Post
+    ordering = 'id'
+    template_name = 'blog/index.html'
+    paginate_by = 5
 
 
-def category_posts(request, category):
-    post_category = get_object_or_404(
-        Category,
-        slug=category,
-        is_published=True
-    )
-    post_list = (
-        Post.objects.select_related(
-            'author',
-            'location',
-            'category'
-        )
-        .filter(
-            category=post_category,
-            is_published=True,
-            pub_date__lte=timezone.now()
-        )
-    )
-    return render(
-        request,
-        'blog/category.html',
-        {
-            'category': post_category,
-            'post_list': post_list
-        }
-    )
+class PostCreateView(CreateView):
+    model = Post
+    fields = '__all__'
+    template_name = 'blog/create.html'
+    success_url = reverse_lazy('blog:profile')
+
+
+class PostUpdateView(UpdateView):
+    model = Post
+    template_name = 'blog/create.html'
+
+
+class PostDetailView(DetailView):
+    model = Post
+    template_name = 'blog/detail.html'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['post_id'] = self.object.Post
+        return context
+
+
+class PostDeleteView(DeleteView):
+    model = Post
+    template_name = 'blog/detail.html'
+
+
+class CategoryListView(ListView):
+    model = Category
+    template_name = 'blog/category.html'
+
+
+class ProfileListView(IndexListView):
+
+    template_name = 'blog/profile.html'
+    author = None
+
+
+class CommentCreateView(LoginRequiredMixin, CreateView):
+    birthday = None
+    model = Comment
+
+    def dispatch(self, request, *args, **kwargs):
+        self.birthday = get_object_or_404(Comment, pk=kwargs['pk'])
+        return super().dispatch(request, *args, **kwargs)
+
+    def form_valid(self, form):
+        form.instance.author = self.request.user
+        form.instance.post = self.post
+        return super().form_valid(form)
+
+    def get_success_url(self):
+        return reverse('blog:comment', kwargs={'pk': self.post.pk})
